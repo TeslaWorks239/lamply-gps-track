@@ -344,6 +344,13 @@ async function connectLoop() {
   }
 }
 
+function errText(e) {
+  if (e === undefined || e === null) return "пустая ошибка";
+  const parts = [];
+  if (e.name) parts.push(e.name); if (e.message) parts.push(e.message); if (e.code) parts.push("код " + e.code);
+  if (!parts.length) { try { parts.push(JSON.stringify(e)); } catch (x) {} parts.push(String(e)); }
+  return parts.join(", ");
+}
 async function pickDevice(all) {
   msg("Нажата кнопка, ищу палку. Должно появиться окно Bluefy со списком устройств.");
   if (!navigator.bluetooth) { msg("В этом браузере нет Web Bluetooth. Откройте ссылку в Bluefy, а не в Safari.", true); return; }
@@ -352,10 +359,10 @@ async function pickDevice(all) {
   try {
     picked = await navigator.bluetooth.requestDevice(all
       ? { acceptAllDevices: true, optionalServices: [SVC] }
-      : { filters: [{ services: [SVC] }, { namePrefix: "LAMPLY-STICK" }], optionalServices: [SVC] });
+      : { filters: [{ services: [SVC] }], optionalServices: [SVC] });
   } catch (e) {
     clearTimeout(slow);
-    msg(e.name === "NotFoundError" ? "Палка не выбрана или не найдена. Разбудите её кнопкой и нажмите ещё раз, или нажмите «Показать все устройства»." : "Ошибка Bluetooth (" + e.name + ": " + e.message + ").", true);
+    msg(e && e.name === "NotFoundError" ? "Палка не выбрана или не найдена (" + errText(e) + "). Разбудите её кнопкой и нажмите ещё раз, или нажмите «Показать все устройства»." : "Ошибка Bluetooth (" + errText(e) + ").", true);
     return;
   }
   clearTimeout(slow);
@@ -363,15 +370,16 @@ async function pickDevice(all) {
   device = picked;
   startDevice();
 }
-$("bConnect").onclick = () => pickDevice(false).catch((e) => msg("Ошибка (" + e.name + ": " + e.message + ").", true));
-$("bAll").onclick = () => pickDevice(true).catch((e) => msg("Ошибка (" + e.name + ": " + e.message + ").", true));
+$("bConnect").onclick = () => pickDevice(false).catch((e) => msg("Ошибка (" + errText(e) + ").", true));
+$("bAll").onclick = () => pickDevice(true).catch((e) => msg("Ошибка (" + errText(e) + ").", true));
 
-(async () => {
+async function checkBrowser() {
   const parts = ["Web Bluetooth " + (navigator.bluetooth ? "есть" : "нет, откройте страницу в Bluefy")];
   try { if (navigator.bluetooth && navigator.bluetooth.getAvailability) parts.push("адаптер " + ((await navigator.bluetooth.getAvailability()) ? "доступен" : "недоступен, включите Bluetooth")); } catch (e) {}
   parts.push(isSecureContext ? "https да" : "https нет");
   $("diag").textContent = "Проверка браузера. " + parts.join(", ") + ".";
-})();
+}
+checkBrowser(); setTimeout(checkBrowser, 1500); setTimeout(checkBrowser, 5000);
 
 function startDevice() {
   if (device.name && device.name !== "LAMPLY-STICK-R") msg("Выбрана " + device.name + ". GPS есть только на правой палке.", true);
