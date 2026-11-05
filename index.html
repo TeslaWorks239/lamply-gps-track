@@ -81,6 +81,13 @@ textarea { width: 100%; box-sizing: border-box; height: 120px; font-family: var(
   <h1>Трек GPS правой палки</h1>
 
   <div id="rec" class="rec"><div class="dot"></div><div id="recText">Не подключено</div><small id="recSub"></small></div>
+  <div id="msg" class="msg"></div>
+  <div class="btns">
+    <button id="bConnect" class="primary">Подключить</button>
+    <button id="bAll">Показать все устройства</button>
+    <button id="bDisconnect" disabled>Отключить</button>
+  </div>
+  <div id="diag" class="msg"></div>
 
   <div class="speed">
     <div class="big" id="vBig">-<span>км/ч</span></div>
@@ -108,15 +115,12 @@ textarea { width: 100%; box-sizing: border-box; height: 120px; font-family: var(
   </div>
 
   <div class="btns">
-    <button id="bConnect" class="primary">Подключить</button>
     <button id="bCsv">Сохранить CSV</button>
     <button id="bGpx">Сохранить GPX</button>
     <button id="bRestore">Восстановить</button>
-    <button id="bDisconnect" disabled>Отключить</button>
     <button id="bClear">Новая запись</button>
     <button id="bCopy">Копировать CSV</button>
   </div>
-  <div id="msg" class="msg"></div>
   <textarea id="out" hidden readonly></textarea>
 
   <details open>
@@ -325,19 +329,39 @@ async function connectLoop() {
   }
 }
 
-$("bConnect").onclick = async () => {
-  if (!navigator.bluetooth) { msg("В этом браузере нет Web Bluetooth. Откройте ссылку в Bluefy.", true); return; }
+async function pickDevice(all) {
+  msg("Нажата кнопка, ищу палку. Должно появиться окно Bluefy со списком устройств.");
+  if (!navigator.bluetooth) { msg("В этом браузере нет Web Bluetooth. Откройте ссылку в Bluefy, а не в Safari.", true); return; }
+  const slow = setTimeout(() => msg("Окно выбора не появилось за 15 с. Проверьте, что Bluetooth на iPhone включён и Bluefy разрешён доступ к Bluetooth (Настройки, Bluefy, Bluetooth). Затем перезагрузите страницу.", true), 15000);
+  let picked;
   try {
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SVC] }, { namePrefix: "LAMPLY-STICK" }],
-      optionalServices: [SVC],
-    });
+    picked = await navigator.bluetooth.requestDevice(all
+      ? { acceptAllDevices: true, optionalServices: [SVC] }
+      : { filters: [{ services: [SVC] }, { namePrefix: "LAMPLY-STICK" }], optionalServices: [SVC] });
   } catch (e) {
-    msg(e.name === "NotFoundError" ? "Палка не выбрана. Разбудите её кнопкой и нажмите ещё раз." : "Bluetooth недоступен (" + e.name + ": " + e.message + ").", true);
+    clearTimeout(slow);
+    msg(e.name === "NotFoundError" ? "Палка не выбрана или не найдена. Разбудите её кнопкой и нажмите ещё раз, или нажмите «Показать все устройства»." : "Ошибка Bluetooth (" + e.name + ": " + e.message + ").", true);
     return;
   }
+  clearTimeout(slow);
+  if (device && device !== picked) { wantConnected = false; clearTimeout(reconnectTimer); try { device.gatt.disconnect(); } catch (e) {} }
+  device = picked;
+  startDevice();
+}
+$("bConnect").onclick = () => pickDevice(false).catch((e) => msg("Ошибка (" + e.name + ": " + e.message + ").", true));
+$("bAll").onclick = () => pickDevice(true).catch((e) => msg("Ошибка (" + e.name + ": " + e.message + ").", true));
+
+(async () => {
+  const parts = ["Web Bluetooth " + (navigator.bluetooth ? "есть" : "нет, откройте страницу в Bluefy")];
+  try { if (navigator.bluetooth && navigator.bluetooth.getAvailability) parts.push("адаптер " + ((await navigator.bluetooth.getAvailability()) ? "доступен" : "недоступен, включите Bluetooth")); } catch (e) {}
+  parts.push(isSecureContext ? "https да" : "https нет");
+  $("diag").textContent = "Проверка браузера. " + parts.join(", ") + ".";
+})();
+
+function startDevice() {
   if (device.name && device.name !== "LAMPLY-STICK-R") msg("Выбрана " + device.name + ". GPS есть только на правой палке.", true);
-  device.addEventListener("gattserverdisconnected", () => {
+  device.addEventListener("gattserverdisconnected", (e) => {
+    if (e.target !== device) return;
     event("disconnect");
     if (wantConnected) { msg("Связь оборвалась, переподключаюсь. Записанное сохранено.", true);
       reconnectTimer = setTimeout(connectLoop, backoff); backoff = Math.min(backoff * 2, 30000); }
