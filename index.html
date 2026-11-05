@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}[hidden]{display:none!important}</style>
+</head><body>
+<title>Трек GPS палки LAMPLY</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one column for a phone in the hand, status strip on top, big speed, map, field grid, actions. */
+:root {
+  --bg: #f3f5f2; --panel: #ffffff; --fg: #17201b; --muted: #5d6b63; --line: #d5ddd7;
+  --accent: #0b6e4f; --ok: #12854a; --bad: #c62828; --warn: #b26a00; --track: #d1361b;
+  --f-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --f-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --f-mono: ui-monospace, Menlo, Consolas, "Roboto Mono", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1512; --panel: #18211c; --fg: #e6ede8; --muted: #93a39a; --line: #2a362f;
+  --accent: #4fc79a; --ok: #3ccf7f; --bad: #ff5a52; --warn: #f2a93b; --track: #ff6a3d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1512; --panel: #18211c; --fg: #e6ede8; --muted: #93a39a; --line: #2a362f;
+  --accent: #4fc79a; --ok: #3ccf7f; --bad: #ff5a52; --warn: #f2a93b; --track: #ff6a3d; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); }
+.wrap { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px 32px; display: grid; gap: 12px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 1.4rem; margin: 0; text-wrap: balance; }
+.rec { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--panel); border: 2px solid var(--line); font-weight: 600; }
+.rec .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--muted); flex: none; }
+.rec.on { border-color: var(--ok); } .rec.on .dot { background: var(--ok); animation: pulse 1s infinite; }
+.rec.stale { border-color: var(--bad); color: var(--bad); } .rec.stale .dot { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .35 } }
+@media (prefers-reduced-motion: reduce) { .rec.on .dot { animation: none } }
+.rec small { font-weight: 400; color: var(--muted); margin-left: auto; text-align: right; }
+.speed { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; background: var(--panel);
+  border-radius: 10px; padding: 10px 14px; border: 1px solid var(--line); }
+.big { font-family: var(--f-display); font-size: 4.4rem; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; }
+.big span { font-size: 1.4rem; color: var(--muted); margin-left: 6px; }
+.sub { text-align: right; font-size: .9rem; color: var(--muted); display: grid; gap: 4px; }
+.sub b { color: var(--fg); font-family: var(--f-mono); font-size: 1.05rem; font-weight: 500; }
+#map { height: 300px; max-width: 100%; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); z-index: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.cell { background: var(--panel); padding: 8px 10px; min-width: 0; }
+.cell .k { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cell .v { font-family: var(--f-mono); font-size: 1.05rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.v.ok { color: var(--ok); } .v.bad { color: var(--bad); } .v.warn { color: var(--warn); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button { font: inherit; font-weight: 600; padding: 14px 10px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--fg); cursor: pointer; }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); grid-column: 1 / -1; font-size: 1.1rem; }
+button:disabled { opacity: .45; }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.msg { font-size: .9rem; color: var(--muted); min-height: 1.2em; overflow-wrap: anywhere; }
+.msg.err { color: var(--bad); }
+details { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+summary { font-weight: 600; cursor: pointer; }
+details ol { padding-left: 1.2em; margin: 8px 0 0; display: grid; gap: 6px; line-height: 1.4; }
+textarea { width: 100%; box-sizing: border-box; height: 120px; font-family: var(--f-mono); font-size: .7rem;
+  background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; }
+/* Leaflet essentials, inlined because external stylesheets are blocked */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;font-family:var(--f-body);touch-action:none}
+.leaflet-tile{filter:inherit;visibility:hidden}.leaflet-tile-loaded{visibility:inherit}
+.leaflet-container img.leaflet-tile{max-width:none!important;max-height:none!important}
+.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-marker-pane{z-index:600}
+.leaflet-control-container .leaflet-top,.leaflet-control-container .leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
+.leaflet-top{top:0}.leaflet-right{right:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}
+.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both}
+.leaflet-right .leaflet-control{float:right}.leaflet-top .leaflet-control{margin-top:8px}.leaflet-left .leaflet-control{margin-left:8px}
+.leaflet-bottom .leaflet-control{margin-bottom:0}.leaflet-right .leaflet-control{margin-right:0}
+.leaflet-bar a{display:block;width:32px;height:32px;line-height:32px;text-align:center;text-decoration:none;background:var(--panel);color:var(--fg);border-bottom:1px solid var(--line);font-size:18px}
+.leaflet-bar{border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.leaflet-control-attribution{background:var(--panel);opacity:.85;font-size:10px;padding:0 4px;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--muted)}
+.leaflet-control-scale-line{border:2px solid var(--muted);border-top:none;font-size:11px;padding:0 4px;background:var(--panel);color:var(--fg)}
+.leaflet-interactive{cursor:pointer}.leaflet-zoom-animated{transform-origin:0 0}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<div class="wrap">
+  <h1>Трек GPS правой палки</h1>
+
+  <div id="rec" class="rec"><div class="dot"></div><div id="recText">Не подключено</div><small id="recSub"></small></div>
+
+  <div class="speed">
+    <div class="big" id="vBig">-<span>км/ч</span></div>
+    <div class="sub">
+      <div>GPS доплер <b id="vGps">-</b></div>
+      <div>палка 0xB006 <b id="vStick">-</b></div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <div class="grid">
+    <div class="cell"><div class="k">fix_type</div><div class="v" id="fFix">-</div></div>
+    <div class="cell"><div class="k">fix_ok</div><div class="v" id="fOk">-</div></div>
+    <div class="cell"><div class="k">num_sv</div><div class="v" id="fSv">-</div></div>
+    <div class="cell"><div class="k">hacc, м</div><div class="v" id="fHacc">-</div></div>
+    <div class="cell"><div class="k">hmsl, м</div><div class="v" id="fHmsl">-</div></div>
+    <div class="cell"><div class="k">пакетов GPS/с</div><div class="v" id="fRate">-</div></div>
+    <div class="cell"><div class="k">с от пакета</div><div class="v" id="fAge">-</div></div>
+    <div class="cell"><div class="k">дистанция, м</div><div class="v" id="fDist">0</div></div>
+    <div class="cell"><div class="k">статус GNSS</div><div class="v" id="fGnss">-</div></div>
+    <div class="cell"><div class="k">режим палки</div><div class="v" id="fMode">-</div></div>
+    <div class="cell"><div class="k">батарея палки</div><div class="v" id="fBat">-</div></div>
+    <div class="cell"><div class="k">записано</div><div class="v" id="fCount">0</div></div>
+  </div>
+
+  <div class="btns">
+    <button id="bConnect" class="primary">Подключить</button>
+    <button id="bCsv">Сохранить CSV</button>
+    <button id="bGpx">Сохранить GPX</button>
+    <button id="bRestore">Восстановить</button>
+    <button id="bDisconnect" disabled>Отключить</button>
+    <button id="bClear">Новая запись</button>
+    <button id="bCopy">Копировать CSV</button>
+  </div>
+  <div id="msg" class="msg"></div>
+  <textarea id="out" hidden readonly></textarea>
+
+  <details open>
+    <summary>Как пользоваться</summary>
+    <ol>
+      <li>Поставить на iPhone браузер Bluefy из App Store (он бесплатный) и открыть эту ссылку в нём.</li>
+      <li>Включить правую палку и разбудить её коротким нажатием кнопки. Палка должна быть заряжена.</li>
+      <li>Нажать «Подключить» и выбрать в списке LAMPLY-STICK-R. Первые одна или две секунды данные не считать.</li>
+      <li>Выйти на открытое небо и дождаться, пока fix_ok станет 1 и появится трек. Плашка сверху зелёная, пока пакеты идут, и красная, если их нет больше 3 с.</li>
+      <li>Экран телефона держать включённым, Bluefy в фоне не принимает данные. При обрыве страница сама переподключается, записанное не теряется.</li>
+      <li>После поездки нажать «Сохранить CSV» и «Сохранить GPX» и выбрать «Сохранить в Файлы». Если сохранение не сработало, нажать «Копировать CSV» и вставить текст в Заметки.</li>
+    </ol>
+    <p class="msg">Запись раз в 30 с сохраняется в память браузера. После перезагрузки страницы нажать «Восстановить».</p>
+  </details>
+</div>
+
+<script id="lamply-parsers">
+// Разбор характеристик палки по ТЗ BLE 2026-10-12, всё little-endian.
+const LamplyParse = {
+  // 0xB005 LamplyGpsBle, <6iI4B, lat раньше lon
+  gps(dv) {
+    if (dv.byteLength < 32) return null;
+    return {
+      lat_1e7: dv.getInt32(0, true), lon_1e7: dv.getInt32(4, true),
+      height_mm: dv.getInt32(8, true), hmsl_mm: dv.getInt32(12, true),
+      gspeed_mms: dv.getInt32(16, true), head_mot_1e5: dv.getInt32(20, true),
+      hacc_mm: dv.getUint32(24, true),
+      fix_type: dv.getUint8(28), num_sv: dv.getUint8(29), fix_ok: dv.getUint8(30), flags: dv.getUint8(31),
+    };
+  },
+  // 0xB006 LamplySpeedBle, <iHBB
+  speed(dv) {
+    if (dv.byteLength < 8) return null;
+    return { speed_mmps: dv.getInt32(0, true), acc_mmps: dv.getUint16(4, true), mode: dv.getUint8(6), flags: dv.getUint8(7) };
+  },
+  // 0xB00E GnssStatus, <BBHI
+  gnss(dv) {
+    if (dv.byteLength < 8) return null;
+    return { status: dv.getUint8(0), sats: dv.getUint8(1), rx_bytes: dv.getUint16(2, true), baud: dv.getUint32(4, true) };
+  },
+  // 0xB003 Battery, <BHBB
+  battery(dv) {
+    if (dv.byteLength < 5) return null;
+    return { soc_pct: dv.getUint8(0), voltage_mV: dv.getUint16(1, true), state: dv.getUint8(3), charging: dv.getUint8(4) };
+  },
+  hex(dv) {
+    let s = ""; for (let i = 0; i < dv.byteLength; i++) s += dv.getUint8(i).toString(16).padStart(2, "0"); return s;
+  },
+  fromHex(h) {
+    const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16);
+    return new DataView(b.buffer);
+  },
+};
+</script>
+
+<script>
+const UUID = (x) => `a6c0${x}-864b-4aaa-8cab-2c026a60709f`;
+const SVC = UUID("b000");
+const CH = { gps: UUID("b005"), speed: UUID("b006"), gnss: UUID("b00e"), battery: UUID("b003"), state: UUID("b004"), reset: UUID("b019") };
+const GNSS_NAMES = ["ABSENT", "OFF", "SILENT", "TALKING", "NO_FIX", "FIX_2D", "FIX_3D"];
+const MODE_NAMES = ["STAND", "WALK", "RUN", "SKI"];
+const STATE_NAMES = ["UNPROVISIONED", "BOOTING", "ADVERTISING", "CONNECTED", "BATTERY_WARNING", "BATTERY_CRITICAL", "CHARGING",
+  "ERROR_RADIO", "ERROR_IMU", "ERROR_BATTERY", "BATTERY_DEAD", "CHARGE_DONE", "DEEP_SLEEP"];
+const LS_KEY = "lamply-gps-track-v1";
+const $ = (id) => document.getElementById(id);
+
+// Записи: {t: unix ms, k: вид, h: hex сырого пакета или текст события}
+let recs = [];
+let device = null, wantConnected = false, backoff = 2000, reconnectTimer = null;
+let lastGpsT = 0, lastAnyT = 0, gpsTimes = [];
+let dist = 0, lastSpeedSample = null; // интеграл доплеровской скорости
+let lastGps = null, lastSpeed = null, lastGnss = null, lastBat = null;
+
+function msg(text, err) { $("msg").textContent = text; $("msg").className = "msg" + (err ? " err" : ""); }
+
+// ---- Карта ----
+let map = null, line = null, marker = null, followed = false;
+try {
+  map = L.map("map", { zoomControl: true, attributionControl: true }).setView([55.75, 37.62], 12);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+  L.control.scale({ imperial: false }).addTo(map);
+  const trackColor = getComputedStyle(document.documentElement).getPropertyValue("--track").trim() || "#d1361b";
+  line = L.polyline([], { color: trackColor, weight: 4 }).addTo(map);
+  marker = L.circleMarker([0, 0], { radius: 7, color: trackColor, fillOpacity: 1 });
+} catch (e) { $("map").textContent = "Карта не загрузилась, запись работает без неё."; }
+
+function addTrackPoint(g, fit) {
+  if (!line || g.fix_ok !== 1) return;
+  const ll = [g.lat_1e7 / 1e7, g.lon_1e7 / 1e7];
+  line.addLatLng(ll);
+  if (!map.hasLayer(marker)) marker.addTo(map);
+  marker.setLatLng(ll);
+  if (fit) return;
+  if (!followed) { map.setView(ll, 17); followed = true; } else if (!map.getBounds().pad(-0.15).contains(ll)) map.panTo(ll);
+}
+
+// ---- Обработка пакета (живого или восстановленного) ----
+function integrate(t, mps) {
+  if (lastSpeedSample) {
+    const dt = (t - lastSpeedSample.t) / 1000;
+    if (dt > 0 && dt <= 2) dist += (mps + lastSpeedSample.v) / 2 * dt; // разрыв больше 2 с не интегрируем
+  }
+  lastSpeedSample = { t, v: mps };
+}
+
+function apply(r, live) {
+  if (r.k === "event") { if (r.h.startsWith("disconnect")) lastSpeedSample = null; return; }
+  const dv = LamplyParse.fromHex(r.h);
+  if (r.k === "gps") {
+    const g = LamplyParse.gps(dv); if (!g) return;
+    lastGps = g; lastGpsT = r.t; lastAnyT = r.t;
+    if (g.fix_ok === 1) integrate(r.t, g.gspeed_mms / 1000); else lastSpeedSample = null;
+    addTrackPoint(g, !live);
+    if (live) { gpsTimes.push(performance.now()); }
+  } else if (r.k === "speed") { lastSpeed = LamplyParse.speed(dv); lastAnyT = r.t; }
+  else if (r.k === "gnss") lastGnss = LamplyParse.gnss(dv);
+  else if (r.k === "battery") lastBat = LamplyParse.battery(dv);
+}
+
+function record(k, dv) {
+  const r = { t: Date.now(), k, h: dv ? LamplyParse.hex(dv) : "" };
+  recs.push(r); apply(r, true); render();
+}
+function event(text) { const r = { t: Date.now(), k: "event", h: text }; recs.push(r); apply(r, true); }
+
+// ---- Экран ----
+const kmh = (mms) => (mms / 1000 * 3.6).toFixed(1);
+function setV(id, text, cls) { const el = $(id); el.textContent = text; el.className = "v" + (cls ? " " + cls : ""); }
+
+function render() {
+  const now = Date.now();
+  if (lastGps) {
+    const g = lastGps;
+    $("vBig").firstChild.nodeValue = g.fix_ok === 1 ? kmh(g.gspeed_mms) : "-";
+    $("vGps").textContent = kmh(g.gspeed_mms) + " км/ч";
+    setV("fFix", String(g.fix_type), g.fix_type === 3 ? "ok" : g.fix_type === 2 ? "warn" : "bad");
+    setV("fOk", String(g.fix_ok), g.fix_ok === 1 ? "ok" : "bad");
+    setV("fSv", String(g.num_sv), g.num_sv >= 6 ? "ok" : "warn");
+    setV("fHacc", (g.hacc_mm / 1000).toFixed(1), g.hacc_mm <= 5000 ? "ok" : "warn");
+    setV("fHmsl", (g.hmsl_mm / 1000).toFixed(1));
+  }
+  if (lastSpeed) {
+    $("vStick").textContent = kmh(lastSpeed.speed_mmps) + " км/ч";
+    setV("fMode", (MODE_NAMES[lastSpeed.mode] || lastSpeed.mode) + (lastSpeed.flags & 1 ? " ZUPT" : ""));
+  }
+  if (lastGnss) setV("fGnss", (GNSS_NAMES[lastGnss.status] || lastGnss.status) + " " + lastGnss.sats,
+    lastGnss.status >= 5 ? "ok" : lastGnss.status === 2 ? "bad" : "warn");
+  if (lastBat) setV("fBat", (lastBat.soc_pct === 255 ? "?" : lastBat.soc_pct + " %") + (lastBat.charging ? " заряд" : ""),
+    lastBat.state >= 2 ? "bad" : lastBat.state === 1 ? "warn" : "");
+  const p = performance.now(); gpsTimes = gpsTimes.filter((x) => p - x < 1000);
+  $("fRate").textContent = device && device.gatt.connected ? String(gpsTimes.length) : "-";
+  const age = lastGpsT ? (now - lastGpsT) / 1000 : null;
+  setV("fAge", age === null ? "-" : age.toFixed(1), age !== null && age > 3 ? "bad" : "");
+  $("fDist").textContent = dist.toFixed(0);
+  $("fCount").textContent = String(recs.length);
+
+  const rec = $("rec"), connected = device && device.gatt.connected;
+  if (connected && age !== null && age <= 3) {
+    rec.className = "rec on"; $("recText").textContent = "Запись идёт";
+  } else if (wantConnected) {
+    rec.className = "rec stale";
+    $("recText").textContent = connected ? (lastGpsT ? "Нет пакетов GPS больше 3 с" : "Подключено, ждём GPS") : "Связь потеряна, переподключаюсь";
+  } else { rec.className = "rec"; $("recText").textContent = "Не подключено"; }
+  $("recSub").textContent = device ? (device.name || "") : "";
+}
+setInterval(render, 250);
+
+// ---- Bluetooth ----
+async function subscribe(svc, key, kind) {
+  const ch = await svc.getCharacteristic(CH[key]);
+  ch.addEventListener("characteristicvaluechanged", (e) => { if (kind) record(kind, e.target.value); });
+  await ch.startNotifications();
+  return ch;
+}
+async function readOnce(svc, key, kind) {
+  try { const ch = await svc.getCharacteristic(CH[key]); const v = await ch.readValue(); if (kind) record(kind, v); } catch (e) {}
+}
+
+async function linkUp() {
+  msg("Подключаюсь к " + (device.name || "палке") + "…");
+  const server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(SVC);
+  // По ТЗ (часть 6) MTU iOS поднимает сама до подписок, 0xB019 подписывать на каждом линке.
+  await readOnce(svc, "reset", null);
+  await readOnce(svc, "gnss", "gnss");
+  await readOnce(svc, "battery", "battery");
+  const optional = [["reset", null], ["state", null], ["battery", "battery"], ["gnss", "gnss"]];
+  for (const [key, kind] of optional) { try { await subscribe(svc, key, kind); } catch (e) {} }
+  await subscribe(svc, "gps", "gps");
+  let speedOk = true;
+  try { await subscribe(svc, "speed", "speed"); } catch (e) { speedOk = false; }
+  event("connected " + (device.name || ""));
+  backoff = 2000;
+  msg("Подключено. " + (speedOk ? "" : "Скорость 0xB006 недоступна. ") + "Первые 1 или 2 с не считать.");
+}
+
+async function connectLoop() {
+  clearTimeout(reconnectTimer);
+  if (!wantConnected || !device) return;
+  try { await linkUp(); }
+  catch (e) {
+    msg("Не удалось подключиться (" + e.message + "). Повтор через " + Math.round(backoff / 1000) + " с.", true);
+    try { device.gatt.disconnect(); } catch (_) {}
+    reconnectTimer = setTimeout(connectLoop, backoff); backoff = Math.min(backoff * 2, 30000);
+  }
+}
+
+$("bConnect").onclick = async () => {
+  if (!navigator.bluetooth) { msg("В этом браузере нет Web Bluetooth. Откройте ссылку в Bluefy.", true); return; }
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SVC] }, { namePrefix: "LAMPLY-STICK" }],
+      optionalServices: [SVC],
+    });
+  } catch (e) {
+    msg(e.name === "NotFoundError" ? "Палка не выбрана. Разбудите её кнопкой и нажмите ещё раз." : "Bluetooth недоступен (" + e.name + ": " + e.message + ").", true);
+    return;
+  }
+  if (device.name && device.name !== "LAMPLY-STICK-R") msg("Выбрана " + device.name + ". GPS есть только на правой палке.", true);
+  device.addEventListener("gattserverdisconnected", () => {
+    event("disconnect");
+    if (wantConnected) { msg("Связь оборвалась, переподключаюсь. Записанное сохранено.", true);
+      reconnectTimer = setTimeout(connectLoop, backoff); backoff = Math.min(backoff * 2, 30000); }
+    render();
+  });
+  wantConnected = true; $("bDisconnect").disabled = false; $("bConnect").textContent = "Подключить другую палку";
+  requestWakeLock();
+  connectLoop();
+};
+
+$("bDisconnect").onclick = () => {
+  wantConnected = false; clearTimeout(reconnectTimer);
+  try { device && device.gatt.disconnect(); } catch (e) {}
+  $("bDisconnect").disabled = true; msg("Отключено. Запись остаётся на странице."); autosave(); render();
+};
+// ТЗ 6.3, рвать соединение при уходе со страницы
+window.addEventListener("pagehide", () => { autosave(); try { device && device.gatt.disconnect(); } catch (e) {} });
+
+let wakeLock = null;
+async function requestWakeLock() { try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wantConnected) requestWakeLock(); });
+
+// ---- Экспорт ----
+const CSV_HEAD = ["t_unix_ms", "t_iso", "kind", "raw_hex", "lat_deg", "lon_deg", "height_m", "hmsl_m", "gspeed_mps", "head_mot_deg",
+  "hacc_m", "fix_type", "num_sv", "fix_ok", "gps_flags", "speed_mmps", "acc_mmps", "mode", "speed_flags",
+  "gnss_status", "gnss_sats", "gnss_rx_bytes", "gnss_baud", "bat_soc_pct", "bat_mV", "bat_state", "bat_charging", "event"];
+function toCsv() {
+  const rows = [CSV_HEAD.join(",")];
+  for (const r of recs) {
+    const c = new Array(CSV_HEAD.length).fill("");
+    c[0] = r.t; c[1] = new Date(r.t).toISOString(); c[2] = r.k;
+    if (r.k === "event") { c[27] = r.h.replace(/[,\n]/g, " "); rows.push(c.join(",")); continue; }
+    c[3] = r.h;
+    const dv = LamplyParse.fromHex(r.h);
+    if (r.k === "gps") { const g = LamplyParse.gps(dv); if (g) {
+      c[4] = (g.lat_1e7 / 1e7).toFixed(7); c[5] = (g.lon_1e7 / 1e7).toFixed(7); c[6] = g.height_mm / 1000; c[7] = g.hmsl_mm / 1000;
+      c[8] = g.gspeed_mms / 1000; c[9] = g.head_mot_1e5 / 1e5; c[10] = g.hacc_mm / 1000;
+      c[11] = g.fix_type; c[12] = g.num_sv; c[13] = g.fix_ok; c[14] = g.flags; } }
+    else if (r.k === "speed") { const s = LamplyParse.speed(dv); if (s) { c[15] = s.speed_mmps; c[16] = s.acc_mmps; c[17] = s.mode; c[18] = s.flags; } }
+    else if (r.k === "gnss") { const s = LamplyParse.gnss(dv); if (s) { c[19] = s.status; c[20] = s.sats; c[21] = s.rx_bytes; c[22] = s.baud; } }
+    else if (r.k === "battery") { const b = LamplyParse.battery(dv); if (b) { c[23] = b.soc_pct; c[24] = b.voltage_mV; c[25] = b.state; c[26] = b.charging; } }
+    rows.push(c.join(","));
+  }
+  return rows.join("\n") + "\n";
+}
+function toGpx() {
+  let out = '<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="LAMPLY GPS track page" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>LAMPLY right stick</name>\n<trkseg>\n';
+  let open = true, any = false;
+  for (const r of recs) {
+    if (r.k === "event" && r.h.startsWith("disconnect")) { if (any) { out += "</trkseg>\n<trkseg>\n"; any = false; } continue; }
+    if (r.k !== "gps") continue;
+    const g = LamplyParse.gps(LamplyParse.fromHex(r.h)); if (!g || g.fix_ok !== 1) continue;
+    any = true;
+    out += `<trkpt lat="${(g.lat_1e7 / 1e7).toFixed(7)}" lon="${(g.lon_1e7 / 1e7).toFixed(7)}"><ele>${(g.hmsl_mm / 1000).toFixed(3)}</ele>` +
+      `<time>${new Date(r.t).toISOString()}</time><hdop>${(g.hacc_mm / 1000).toFixed(2)}</hdop><sat>${g.num_sv}</sat>` +
+      `<extensions><speed>${(g.gspeed_mms / 1000).toFixed(3)}</speed></extensions></trkpt>\n`;
+  }
+  return out + "</trkseg>\n</trk>\n</gpx>\n";
+}
+function stamp() { const d = new Date(); const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}`; }
+
+let downloadsNs;
+const downloadsReady = (window.claude && window.claude.use) ? window.claude.use("downloads").then((d) => (downloadsNs = d)).catch(() => null) : Promise.resolve(null);
+
+async function saveFile(name, text, mime) {
+  if (!recs.length) { msg("Запись пустая, сохранять нечего.", true); return; }
+  try {
+    const d = downloadsNs !== undefined ? downloadsNs : await downloadsReady;
+    if (d) { await d.save({ filename: name, data: new Blob([text], { type: mime }) }); msg("Файл " + name + " отдан на сохранение."); return; }
+  } catch (e) { msg("Сохранение отменено или не сработало (" + (e.code || e.message) + "). Попробуйте «Копировать CSV».", true); return; }
+  try {
+    const file = new File([text], name, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file] }); msg("Файл " + name + " передан."); return; }
+  } catch (e) { if (e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: mime })); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  msg("Если файл не появился, нажмите «Копировать CSV».");
+}
+$("bCsv").onclick = () => saveFile(`lamply_gps_${stamp()}.csv`, toCsv(), "text/csv");
+$("bGpx").onclick = () => saveFile(`lamply_gps_${stamp()}.gpx`, toGpx(), "application/gpx+xml");
+$("bCopy").onclick = async () => {
+  const text = toCsv(); const ta = $("out"); ta.hidden = false; ta.value = text;
+  try { await navigator.clipboard.writeText(text); msg("CSV скопирован, " + recs.length + " строк. Вставьте в Заметки или письмо."); }
+  catch (e) { ta.focus(); ta.select(); msg("Скопировать автоматически не вышло. Текст выделен в поле ниже, скопируйте его вручную.", true); }
+};
+
+// ---- Автосохранение ----
+function autosave() {
+  if (!recs.length) return;
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ saved: Date.now(), recs })); }
+  catch (e) { msg("Память браузера переполнена или недоступна. Сохраните CSV сейчас.", true); }
+}
+setInterval(autosave, 30000);
+
+function rebuild() {
+  dist = 0; lastSpeedSample = null; lastGps = lastSpeed = lastGnss = lastBat = null; lastGpsT = 0;
+  if (line) line.setLatLngs([]);
+  for (const r of recs) apply(r, false);
+  if (line && line.getLatLngs().length) { map.fitBounds(line.getBounds(), { padding: [20, 20] }); followed = true; }
+  render();
+}
+$("bRestore").onclick = () => {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (e) {}
+  if (!saved || !saved.recs || !saved.recs.length) { msg("Сохранённой записи нет.", true); return; }
+  const seen = new Set(recs.map((r) => r.t + r.k + r.h));
+  const merged = recs.concat(saved.recs.filter((r) => !seen.has(r.t + r.k + r.h))).sort((a, b) => a.t - b.t);
+  recs = merged; rebuild();
+  msg("Восстановлено " + saved.recs.length + " записей от " + new Date(saved.saved).toLocaleTimeString("ru-RU") + ".");
+};
+let clearArmed = 0;
+$("bClear").onclick = () => {
+  if (Date.now() - clearArmed > 4000) { clearArmed = Date.now(); $("bClear").textContent = "Точно стереть?"; msg("Нажмите ещё раз, чтобы начать новую запись. Текущая будет стёрта со страницы и из памяти браузера.");
+    setTimeout(() => { $("bClear").textContent = "Новая запись"; }, 4000); return; }
+  clearArmed = 0; $("bClear").textContent = "Новая запись";
+  recs = []; try { localStorage.removeItem(LS_KEY); } catch (e) {}
+  rebuild(); msg("Начата новая запись.");
+};
+try { const s = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+  if (s && s.recs && s.recs.length) msg("Есть сохранённая запись от " + new Date(s.saved).toLocaleString("ru-RU") + ", " + s.recs.length + " пакетов. Нажмите «Восстановить»."); } catch (e) {}
+render();
+</script>
+
+</body></html>
