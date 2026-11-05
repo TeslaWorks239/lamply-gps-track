@@ -75,7 +75,6 @@ textarea { width: 100%; box-sizing: border-box; height: 120px; font-family: var(
 .leaflet-control-scale-line{border:2px solid var(--muted);border-top:none;font-size:11px;padding:0 4px;background:var(--panel);color:var(--fg)}
 .leaflet-interactive{cursor:pointer}.leaflet-zoom-animated{transform-origin:0 0}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
 <div class="wrap">
   <h1>Трек GPS правой палки</h1>
@@ -87,7 +86,8 @@ textarea { width: 100%; box-sizing: border-box; height: 120px; font-family: var(
     <button id="bAll">Показать все устройства</button>
     <button id="bDisconnect" disabled>Отключить</button>
   </div>
-  <div id="diag" class="msg"></div>
+  <div id="diag" class="msg">Скрипт страницы ещё не запустился.</div>
+  <script>window.addEventListener("error", function (e) { var d = document.getElementById("diag"); if (d) d.textContent = "Ошибка скрипта: " + e.message + " (строка " + e.lineno + ")"; d.className = "msg err"; });</script>
 
   <div class="speed">
     <div class="big" id="vBig">-<span>км/ч</span></div>
@@ -177,6 +177,8 @@ const LamplyParse = {
 </script>
 
 <script>
+(function () {
+"use strict";
 const UUID = (x) => `a6c0${x}-864b-4aaa-8cab-2c026a60709f`;
 const SVC = UUID("b000");
 const CH = { gps: UUID("b005"), speed: UUID("b006"), gnss: UUID("b00e"), battery: UUID("b003"), state: UUID("b004"), reset: UUID("b019") };
@@ -198,15 +200,27 @@ function msg(text, err) { $("msg").textContent = text; $("msg").className = "msg
 
 // ---- Карта ----
 let map = null, line = null, marker = null, followed = false;
-try {
-  map = L.map("map", { zoomControl: true, attributionControl: true }).setView([55.75, 37.62], 12);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
-  L.control.scale({ imperial: false }).addTo(map);
-  const trackColor = getComputedStyle(document.documentElement).getPropertyValue("--track").trim() || "#d1361b";
-  line = L.polyline([], { color: trackColor, weight: 4 }).addTo(map);
-  marker = L.circleMarker([0, 0], { radius: 7, color: trackColor, fillOpacity: 1 });
-} catch (e) { $("map").textContent = "Карта не загрузилась, запись работает без неё."; }
+function initMap() {
+  try {
+    map = L.map("map", { zoomControl: true, attributionControl: true }).setView([55.75, 37.62], 12);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
+    L.control.scale({ imperial: false }).addTo(map);
+    const trackColor = getComputedStyle(document.documentElement).getPropertyValue("--track").trim() || "#d1361b";
+    line = L.polyline([], { color: trackColor, weight: 4 }).addTo(map);
+    marker = L.circleMarker([0, 0], { radius: 7, color: trackColor, fillOpacity: 1 });
+    for (const r of recs) if (r.k === "gps") { const g = LamplyParse.gps(LamplyParse.fromHex(r.h)); if (g) addTrackPoint(g, true); }
+    if (line.getLatLngs().length) { map.fitBounds(line.getBounds(), { padding: [20, 20] }); followed = true; }
+  } catch (e) { map = line = null; $("map").textContent = "Карта не загрузилась, запись работает без неё."; }
+}
+(function loadLeaflet() {
+  $("map").textContent = "Карта загружается…";
+  const sc = document.createElement("script");
+  sc.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+  sc.onload = () => { $("map").textContent = ""; initMap(); };
+  sc.onerror = () => { $("map").textContent = "Карта не загрузилась (нет связи с сервером карты), запись работает без неё."; };
+  document.head.appendChild(sc);
+})();
 
 function addTrackPoint(g, fit) {
   if (!line || g.fix_ok !== 1) return;
@@ -245,7 +259,7 @@ function record(k, dv) {
   const r = { t: Date.now(), k, h: dv ? LamplyParse.hex(dv) : "" };
   recs.push(r); apply(r, true); render();
 }
-function event(text) { const r = { t: Date.now(), k: "event", h: text }; recs.push(r); apply(r, true); }
+function logEvent(text) { const r = { t: Date.now(), k: "event", h: text }; recs.push(r); apply(r, true); }
 
 // ---- Экран ----
 const kmh = (mms) => (mms / 1000 * 3.6).toFixed(1);
@@ -288,6 +302,7 @@ function render() {
   $("recSub").textContent = device ? (device.name || "") : "";
 }
 setInterval(render, 250);
+$("diag").textContent = "Скрипт страницы запущен.";
 
 // ---- Bluetooth ----
 async function subscribe(svc, key, kind) {
@@ -313,7 +328,7 @@ async function linkUp() {
   await subscribe(svc, "gps", "gps");
   let speedOk = true;
   try { await subscribe(svc, "speed", "speed"); } catch (e) { speedOk = false; }
-  event("connected " + (device.name || ""));
+  logEvent("connected " + (device.name || ""));
   backoff = 2000;
   msg("Подключено. " + (speedOk ? "" : "Скорость 0xB006 недоступна. ") + "Первые 1 или 2 с не считать.");
 }
@@ -362,7 +377,7 @@ function startDevice() {
   if (device.name && device.name !== "LAMPLY-STICK-R") msg("Выбрана " + device.name + ". GPS есть только на правой палке.", true);
   device.addEventListener("gattserverdisconnected", (e) => {
     if (e.target !== device) return;
-    event("disconnect");
+    logEvent("disconnect");
     if (wantConnected) { msg("Связь оборвалась, переподключаюсь. Записанное сохранено.", true);
       reconnectTimer = setTimeout(connectLoop, backoff); backoff = Math.min(backoff * 2, 30000); }
     render();
@@ -484,6 +499,7 @@ $("bClear").onclick = () => {
 try { const s = JSON.parse(localStorage.getItem(LS_KEY) || "null");
   if (s && s.recs && s.recs.length) msg("Есть сохранённая запись от " + new Date(s.saved).toLocaleString("ru-RU") + ", " + s.recs.length + " пакетов. Нажмите «Восстановить»."); } catch (e) {}
 render();
+})();
 </script>
 
 </body></html>
